@@ -70,7 +70,18 @@
             android:textSize="16sp"
             android:textStyle="bold" />
 
-        <!-- Stock Actual y Mínimo -->
+        <!-- Código de barras (si existe) -->
+        <TextView
+            android:id="@+id/tvItemCodigoBarras"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="CB: 7891234567890"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp"
+            android:visibility="gone" />
+
+        <!-- Stock Actual, Unidad y Mínimo -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -84,6 +95,15 @@
                 android:text="Stock: 15 u."
                 android:textColor="@color/text_primary"
                 android:textSize="13sp" />
+
+            <TextView
+                android:id="@+id/tvItemUnidadMedida"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="(Unidad)"
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp" />
 
             <TextView
                 android:id="@+id/tvItemStockMinimo"

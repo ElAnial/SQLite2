@@ -14,7 +14,7 @@ import java.util.List;
 public class DBHelper extends SQLiteOpenHelper {
 
     private static final String DB_NAME = "BD_INVENTARIO.db";
-    private static final int DB_VERSION = 3;
+    private static final int DB_VERSION = 4;
 
     public DBHelper(Context context) {
         super(context, DB_NAME, null, DB_VERSION);
@@ -56,15 +56,35 @@ public class DBHelper extends SQLiteOpenHelper {
         db.execSQL("CREATE TABLE producto (" +
                 "id_producto INTEGER PRIMARY KEY AUTOINCREMENT, " +
                 "sku_codigo TEXT NOT NULL UNIQUE, " +
+                "codigo_barras TEXT UNIQUE, " +
                 "nombre TEXT NOT NULL, " +
                 "descripcion TEXT, " +
+                "unidad_medida TEXT DEFAULT 'Unidad', " +
+                "stock_inicial INTEGER NOT NULL DEFAULT 0, " +
                 "stock_actual INTEGER NOT NULL DEFAULT 0, " +
                 "stock_minimo INTEGER NOT NULL DEFAULT 0, " +
                 "id_categoria INTEGER, " +
                 "activo INTEGER DEFAULT 1, " +
                 "FOREIGN KEY (id_categoria) REFERENCES categoria(id_categoria))");
 
-        // 6. Database Seeding (Datos Iniciales)
+        // 6. Tabla MOVIMIENTO (Entradas y Salidas)
+        db.execSQL("CREATE TABLE movimiento (" +
+                "id_movimiento INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                "id_producto INTEGER NOT NULL, " +
+                "tipo TEXT NOT NULL, " +
+                "cantidad INTEGER NOT NULL, " +
+                "fecha_hora TEXT NOT NULL, " +
+                "id_usuario INTEGER NOT NULL, " +
+                "id_proveedor INTEGER, " +
+                "documento TEXT, " +
+                "motivo TEXT, " +
+                "destinatario TEXT, " +
+                "observacion TEXT, " +
+                "FOREIGN KEY (id_producto) REFERENCES producto(id_producto), " +
+                "FOREIGN KEY (id_usuario) REFERENCES usuario(id_usuario), " +
+                "FOREIGN KEY (id_proveedor) REFERENCES proveedor(id_proveedor))");
+
+        // 7. Database Seeding (Datos Iniciales)
         seedingDatosIniciales(db);
     }
 
@@ -72,6 +92,7 @@ public class DBHelper extends SQLiteOpenHelper {
         // Insertar Roles Básicos
         db.execSQL("INSERT INTO rol (id_rol, nombre_rol, descripcion) VALUES (1, 'ADMINISTRADOR', 'Acceso total a la administración de usuarios, categorías e inventario')");
         db.execSQL("INSERT INTO rol (id_rol, nombre_rol, descripcion) VALUES (2, 'BODEGUERO', 'Acceso limitado a la consulta y gestión de productos y categorías')");
+        db.execSQL("INSERT INTO rol (id_rol, nombre_rol, descripcion) VALUES (3, 'CONSULTA', 'Acceso de solo lectura a productos e informes')");
 
         // Insertar Usuario Administrador Inicial (admin / 1234)
         String passHashAdmin = hashPassword("1234");
@@ -101,8 +122,11 @@ public class DBHelper extends SQLiteOpenHelper {
         // Insertar Producto de Ejemplo
         ContentValues prodValues = new ContentValues();
         prodValues.put("sku_codigo", "PROD-001");
+        prodValues.put("codigo_barras", "7891234567890");
         prodValues.put("nombre", "Laptop Lenovo 15\"");
         prodValues.put("descripcion", "Intel Core i5 16GB RAM");
+        prodValues.put("unidad_medida", "Unidad");
+        prodValues.put("stock_inicial", 5);
         prodValues.put("stock_actual", 5);
         prodValues.put("stock_minimo", 10); // Alerta de stock bajo
         prodValues.put("id_categoria", 1);
@@ -112,13 +136,42 @@ public class DBHelper extends SQLiteOpenHelper {
 
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-        db.execSQL("DROP TABLE IF EXISTS producto");
-        db.execSQL("DROP TABLE IF EXISTS proveedor");
-        db.execSQL("DROP TABLE IF EXISTS categoria");
-        db.execSQL("DROP TABLE IF EXISTS usuario");
-        db.execSQL("DROP TABLE IF EXISTS rol");
-        db.execSQL("DROP TABLE IF EXISTS persona");
-        onCreate(db);
+        if (oldVersion < 4) {
+            try {
+                db.execSQL("ALTER TABLE producto ADD COLUMN codigo_barras TEXT");
+            } catch (Exception ignored) {}
+            try {
+                db.execSQL("ALTER TABLE producto ADD COLUMN unidad_medida TEXT DEFAULT 'Unidad'");
+            } catch (Exception ignored) {}
+            try {
+                db.execSQL("ALTER TABLE producto ADD COLUMN stock_inicial INTEGER DEFAULT 0");
+            } catch (Exception ignored) {}
+            db.execSQL("CREATE TABLE IF NOT EXISTS movimiento (" +
+                    "id_movimiento INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                    "id_producto INTEGER NOT NULL, " +
+                    "tipo TEXT NOT NULL, " +
+                    "cantidad INTEGER NOT NULL, " +
+                    "fecha_hora TEXT NOT NULL, " +
+                    "id_usuario INTEGER NOT NULL, " +
+                    "id_proveedor INTEGER, " +
+                    "documento TEXT, " +
+                    "motivo TEXT, " +
+                    "destinatario TEXT, " +
+                    "observacion TEXT, " +
+                    "FOREIGN KEY (id_producto) REFERENCES producto(id_producto), " +
+                    "FOREIGN KEY (id_usuario) REFERENCES usuario(id_usuario), " +
+                    "FOREIGN KEY (id_proveedor) REFERENCES proveedor(id_proveedor))");
+            db.execSQL("INSERT OR IGNORE INTO rol (id_rol, nombre_rol, descripcion) VALUES (3, 'CONSULTA', 'Acceso de solo lectura a productos e informes')");
+        } else {
+            db.execSQL("DROP TABLE IF EXISTS movimiento");
+            db.execSQL("DROP TABLE IF EXISTS producto");
+            db.execSQL("DROP TABLE IF EXISTS proveedor");
+            db.execSQL("DROP TABLE IF EXISTS categoria");
+            db.execSQL("DROP TABLE IF EXISTS usuario");
+            db.execSQL("DROP TABLE IF EXISTS rol");
+            db.execSQL("DROP TABLE IF EXISTS persona");
+            onCreate(db);
+        }
     }
 
     // Método de utilidad estático para hashear contraseñas
@@ -314,4 +367,222 @@ public class DBHelper extends SQLiteOpenHelper {
             return false;
         }
     }
+
+    // --- MÉTODOS PARA GESTIÓN DE PRODUCTOS Y MOVIMIENTOS ---
+
+    public Producto obtenerProductoPorId(int idProducto) {
+        SQLiteDatabase db = this.getReadableDatabase();
+        String sql = "SELECT p.id_producto, p.sku_codigo, p.codigo_barras, p.nombre, p.descripcion, p.unidad_medida, p.stock_inicial, p.stock_actual, p.stock_minimo, p.id_categoria, p.activo, c.nombre_categoria " +
+                "FROM producto p LEFT JOIN categoria c ON p.id_categoria = c.id_categoria " +
+                "WHERE p.id_producto = ?";
+        try (Cursor c = db.rawQuery(sql, new String[]{String.valueOf(idProducto)})) {
+            if (c.moveToFirst()) {
+                return mapearProducto(c);
+            }
+        } catch (Exception e) {
+            Log.e("DBHelper", "Error al obtener producto por ID: " + e.getMessage());
+        }
+        return null;
+    }
+
+    public Producto obtenerProductoPorCodigoBarras(String codigoBarras) {
+        if (codigoBarras == null || codigoBarras.trim().isEmpty()) return null;
+        SQLiteDatabase db = this.getReadableDatabase();
+        String sql = "SELECT p.id_producto, p.sku_codigo, p.codigo_barras, p.nombre, p.descripcion, p.unidad_medida, p.stock_inicial, p.stock_actual, p.stock_minimo, p.id_categoria, p.activo, c.nombre_categoria " +
+                "FROM producto p LEFT JOIN categoria c ON p.id_categoria = c.id_categoria " +
+                "WHERE p.codigo_barras = ? OR p.sku_codigo = ?";
+        try (Cursor c = db.rawQuery(sql, new String[]{codigoBarras.trim(), codigoBarras.trim()})) {
+            if (c.moveToFirst()) {
+                return mapearProducto(c);
+            }
+        } catch (Exception e) {
+            Log.e("DBHelper", "Error al obtener producto por código de barras: " + e.getMessage());
+        }
+        return null;
+    }
+
+    public List<Producto> obtenerProductosActivos() {
+        List<Producto> lista = new ArrayList<>();
+        SQLiteDatabase db = this.getReadableDatabase();
+        String sql = "SELECT p.id_producto, p.sku_codigo, p.codigo_barras, p.nombre, p.descripcion, p.unidad_medida, p.stock_inicial, p.stock_actual, p.stock_minimo, p.id_categoria, p.activo, c.nombre_categoria " +
+                "FROM producto p LEFT JOIN categoria c ON p.id_categoria = c.id_categoria " +
+                "WHERE p.activo = 1 ORDER BY p.nombre ASC";
+        try (Cursor c = db.rawQuery(sql, null)) {
+            if (c.moveToFirst()) {
+                do {
+                    lista.add(mapearProducto(c));
+                } while (c.moveToNext());
+            }
+        } catch (Exception e) {
+            Log.e("DBHelper", "Error al obtener productos activos: " + e.getMessage());
+        }
+        return lista;
+    }
+
+    private Producto mapearProducto(Cursor c) {
+        Producto p = new Producto();
+        p.setIdProducto(c.getInt(c.getColumnIndexOrThrow("id_producto")));
+        p.setSkuCodigo(c.getString(c.getColumnIndexOrThrow("sku_codigo")));
+        int cbIdx = c.getColumnIndex("codigo_barras");
+        p.setCodigoBarras(cbIdx != -1 && c.getString(cbIdx) != null ? c.getString(cbIdx) : "");
+        p.setNombre(c.getString(c.getColumnIndexOrThrow("nombre")));
+        p.setDescripcion(c.getString(c.getColumnIndexOrThrow("descripcion")));
+        int umIdx = c.getColumnIndex("unidad_medida");
+        p.setUnidadMedida(umIdx != -1 && c.getString(umIdx) != null ? c.getString(umIdx) : "Unidad");
+        int stIniIdx = c.getColumnIndex("stock_inicial");
+        p.setStockInicial(stIniIdx != -1 ? c.getInt(stIniIdx) : 0);
+        p.setStockActual(c.getInt(c.getColumnIndexOrThrow("stock_actual")));
+        p.setStockMinimo(c.getInt(c.getColumnIndexOrThrow("stock_minimo")));
+        p.setIdCategoria(c.getInt(c.getColumnIndexOrThrow("id_categoria")));
+        p.setActivo(c.getInt(c.getColumnIndexOrThrow("activo")));
+        int catNomIdx = c.getColumnIndex("nombre_categoria");
+        p.setNombreCategoria(catNomIdx != -1 && c.getString(catNomIdx) != null ? c.getString(catNomIdx) : "Sin Categoría");
+        return p;
+    }
+
+    // REGISTRAR ENTRADA EN UNA SOLA TRANSACCIÓN (CU-04)
+    public boolean registrarEntradaTransaccional(int idProducto, int cantidad, int idUsuario, Integer idProveedor, String documento, String observacion) {
+        if (cantidad <= 0) return false;
+        SQLiteDatabase db = this.getWritableDatabase();
+        db.beginTransaction();
+        try {
+            // Validar que el producto exista y esté activo
+            Cursor c = db.rawQuery("SELECT stock_actual, activo FROM producto WHERE id_producto = ?", new String[]{String.valueOf(idProducto)});
+            if (!c.moveToFirst() || c.getInt(1) != 1) {
+                c.close();
+                return false;
+            }
+            int stockActual = c.getInt(0);
+            c.close();
+
+            java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault());
+            String fechaHora = sdf.format(new java.util.Date());
+
+            ContentValues mv = new ContentValues();
+            mv.put("id_producto", idProducto);
+            mv.put("tipo", "ENTRADA");
+            mv.put("cantidad", cantidad);
+            mv.put("fecha_hora", fechaHora);
+            mv.put("id_usuario", idUsuario);
+            if (idProveedor != null && idProveedor > 0) {
+                mv.put("id_proveedor", idProveedor);
+            }
+            mv.put("documento", documento);
+            mv.put("observacion", observacion);
+
+            long idMv = db.insert("movimiento", null, mv);
+            if (idMv == -1) return false;
+
+            ContentValues cvProd = new ContentValues();
+            cvProd.put("stock_actual", stockActual + cantidad);
+            int rows = db.update("producto", cvProd, "id_producto = ? AND activo = 1", new String[]{String.valueOf(idProducto)});
+            if (rows <= 0) return false;
+
+            db.setTransactionSuccessful();
+            return true;
+        } catch (Exception e) {
+            Log.e("DBHelper", "Error en transacción de entrada: " + e.getMessage());
+            return false;
+        } finally {
+            db.endTransaction();
+        }
+    }
+
+    // REGISTRAR SALIDA EN UNA SOLA TRANSACCIÓN (CU-05)
+    public boolean registrarSalidaTransaccional(int idProducto, int cantidad, int idUsuario, String motivo, String destinatario, String observacion) {
+        if (cantidad <= 0) return false;
+        SQLiteDatabase db = this.getWritableDatabase();
+        db.beginTransaction();
+        try {
+            // Validar producto activo y stock suficiente
+            Cursor c = db.rawQuery("SELECT stock_actual, activo FROM producto WHERE id_producto = ?", new String[]{String.valueOf(idProducto)});
+            if (!c.moveToFirst() || c.getInt(1) != 1) {
+                c.close();
+                return false;
+            }
+            int stockActual = c.getInt(0);
+            c.close();
+
+            if (stockActual < cantidad) {
+                return false; // No hay stock suficiente
+            }
+
+            java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault());
+            String fechaHora = sdf.format(new java.util.Date());
+
+            ContentValues mv = new ContentValues();
+            mv.put("id_producto", idProducto);
+            mv.put("tipo", "SALIDA");
+            mv.put("cantidad", cantidad);
+            mv.put("fecha_hora", fechaHora);
+            mv.put("id_usuario", idUsuario);
+            mv.put("motivo", motivo);
+            mv.put("destinatario", destinatario);
+            mv.put("observacion", observacion);
+
+            long idMv = db.insert("movimiento", null, mv);
+            if (idMv == -1) return false;
+
+            ContentValues cvProd = new ContentValues();
+            cvProd.put("stock_actual", stockActual - cantidad);
+            int rows = db.update("producto", cvProd, "id_producto = ? AND activo = 1 AND stock_actual >= ?", new String[]{String.valueOf(idProducto), String.valueOf(cantidad)});
+            if (rows <= 0) return false;
+
+            db.setTransactionSuccessful();
+            return true;
+        } catch (Exception e) {
+            Log.e("DBHelper", "Error en transacción de salida: " + e.getMessage());
+            return false;
+        } finally {
+            db.endTransaction();
+        }
+    }
+
+    // GENERAR INFORME DE STOCK CON FILTROS (CU-06)
+    public List<Producto> obtenerInformeStock(int idCategoriaFilter, String busquedaFilter, String estadoFilter) {
+        List<Producto> lista = new ArrayList<>();
+        SQLiteDatabase db = this.getReadableDatabase();
+        StringBuilder sql = new StringBuilder();
+        sql.append("SELECT p.id_producto, p.sku_codigo, p.codigo_barras, p.nombre, p.descripcion, p.unidad_medida, p.stock_inicial, p.stock_actual, p.stock_minimo, p.id_categoria, p.activo, c.nombre_categoria ")
+                .append("FROM producto p ")
+                .append("LEFT JOIN categoria c ON p.id_categoria = c.id_categoria ")
+                .append("WHERE p.activo = 1 ");
+
+        List<String> args = new ArrayList<>();
+
+        if (idCategoriaFilter > 0) {
+            sql.append("AND p.id_categoria = ? ");
+            args.add(String.valueOf(idCategoriaFilter));
+        }
+
+        if (busquedaFilter != null && !busquedaFilter.trim().isEmpty()) {
+            sql.append("AND (p.sku_codigo LIKE ? OR p.nombre LIKE ? OR p.codigo_barras LIKE ?) ");
+            String q = "%" + busquedaFilter.trim() + "%";
+            args.add(q);
+            args.add(q);
+            args.add(q);
+        }
+
+        if ("DISPONIBLE".equalsIgnoreCase(estadoFilter)) {
+            sql.append("AND p.stock_actual > p.stock_minimo ");
+        } else if ("CRITICO".equalsIgnoreCase(estadoFilter)) {
+            sql.append("AND p.stock_actual <= p.stock_minimo AND p.stock_actual > 0 ");
+        } else if ("SIN_STOCK".equalsIgnoreCase(estadoFilter)) {
+            sql.append("AND p.stock_actual = 0 ");
+        }
+
+        sql.append("ORDER BY p.nombre ASC");
+
+        try (Cursor c = db.rawQuery(sql.toString(), args.toArray(new String[0]))) {
+            if (c.moveToFirst()) {
+                do {
+                    lista.add(mapearProducto(c));
+                } while (c.moveToNext());
+            }
+        } catch (Exception e) {
+            Log.e("DBHelper", "Error en obtenerInformeStock: " + e.getMessage());
+        }
+        return lista;
+    }
 }
+

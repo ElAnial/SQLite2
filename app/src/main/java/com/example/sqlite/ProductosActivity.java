@@ -21,6 +21,8 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.textfield.TextInputEditText;
+import com.google.zxing.integration.android.IntentIntegrator;
+import com.google.zxing.integration.android.IntentResult;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -28,12 +30,13 @@ import java.util.List;
 public class ProductosActivity extends AppCompatActivity {
 
     private TextInputEditText etBuscarProducto;
-    private MaterialButton btnNuevoProducto;
+    private MaterialButton btnEscanearBuscar, btnNuevoProducto;
     private ListView lstProductos;
 
     private DBHelper dbHelper;
     private ArrayList<Producto> listaProductos;
     private ProductoAdapter adapter;
+    private SessionManager session;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -41,10 +44,17 @@ public class ProductosActivity extends AppCompatActivity {
         setContentView(R.layout.activity_productos);
 
         dbHelper = new DBHelper(this);
+        session = new SessionManager(this);
 
         etBuscarProducto = findViewById(R.id.etBuscarProducto);
+        btnEscanearBuscar = findViewById(R.id.btnEscanearBuscar);
         btnNuevoProducto = findViewById(R.id.btnNuevoProducto);
         lstProductos = findViewById(R.id.lstProductos);
+
+        // Control de permisos por rol: Usuario de consulta (id_rol == 3) no puede crear/editar productos
+        if (session.getRoleId() == 3) {
+            btnNuevoProducto.setVisibility(View.GONE);
+        }
 
         listaProductos = new ArrayList<>();
         adapter = new ProductoAdapter(this, listaProductos);
@@ -58,7 +68,16 @@ public class ProductosActivity extends AppCompatActivity {
             startActivity(i);
         });
 
-        // Búsqueda Dinámica y Reactiva por SKU o Nombre
+        btnEscanearBuscar.setOnClickListener(v -> {
+            IntentIntegrator integrator = new IntentIntegrator(this);
+            integrator.setPrompt("Escanee un código para buscar");
+            integrator.setCameraId(0);
+            integrator.setBeepEnabled(true);
+            integrator.setOrientationLocked(false);
+            integrator.initiateScan();
+        });
+
+        // Búsqueda Dinámica y Reactiva por SKU, Nombre o Código de Barras
         etBuscarProducto.addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
@@ -72,8 +91,12 @@ public class ProductosActivity extends AppCompatActivity {
             public void afterTextChanged(Editable s) {}
         });
 
-        // Clic en fila para Editar
+        // Clic en fila para Editar (Solo si no es Usuario de Consulta)
         lstProductos.setOnItemClickListener((parent, view, position, id) -> {
+            if (session.getRoleId() == 3) {
+                Toast.makeText(this, "Usuario de consulta: Solo lectura", Toast.LENGTH_SHORT).show();
+                return;
+            }
             Producto producto = listaProductos.get(position);
             Intent i = new Intent(ProductosActivity.this, EditarProductoActivity.class);
             i.putExtra("id_producto", producto.getIdProducto());
@@ -88,6 +111,20 @@ public class ProductosActivity extends AppCompatActivity {
     }
 
     @Override
+    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+        IntentResult result = IntentIntegrator.parseActivityResult(requestCode, resultCode, data);
+        if (result != null) {
+            if (result.getContents() != null) {
+                String barcode = result.getContents();
+                etBuscarProducto.setText(barcode);
+                Toast.makeText(this, "Buscando código: " + barcode, Toast.LENGTH_SHORT).show();
+            }
+        } else {
+            super.onActivityResult(requestCode, resultCode, data);
+        }
+    }
+
+    @Override
     protected void onResume() {
         super.onResume();
         String filtro = etBuscarProducto.getText() != null ? etBuscarProducto.getText().toString().trim() : "";
@@ -99,15 +136,16 @@ public class ProductosActivity extends AppCompatActivity {
         listaProductos.clear();
 
         StringBuilder sql = new StringBuilder();
-        sql.append("SELECT p.id_producto, p.sku_codigo, p.nombre, p.descripcion, p.stock_actual, p.stock_minimo, p.id_categoria, c.nombre_categoria ")
+        sql.append("SELECT p.id_producto, p.sku_codigo, p.codigo_barras, p.nombre, p.descripcion, p.unidad_medida, p.stock_inicial, p.stock_actual, p.stock_minimo, p.id_categoria, c.nombre_categoria ")
                 .append("FROM producto p ")
                 .append("LEFT JOIN categoria c ON p.id_categoria = c.id_categoria ")
                 .append("WHERE p.activo = 1 ");
 
         String[] selectionArgs = null;
         if (filtro != null && !filtro.isEmpty()) {
-            sql.append("AND (p.sku_codigo LIKE ? OR p.nombre LIKE ?) ");
-            selectionArgs = new String[]{"%" + filtro + "%", "%" + filtro + "%"};
+            sql.append("AND (p.sku_codigo LIKE ? OR p.nombre LIKE ? OR p.codigo_barras LIKE ?) ");
+            String q = "%" + filtro + "%";
+            selectionArgs = new String[]{q, q, q};
         }
 
         sql.append("ORDER BY p.nombre ASC");
@@ -116,8 +154,11 @@ public class ProductosActivity extends AppCompatActivity {
             if (c.moveToFirst()) {
                 int idIdx = c.getColumnIndexOrThrow("id_producto");
                 int skuIdx = c.getColumnIndexOrThrow("sku_codigo");
+                int cbIdx = c.getColumnIndex("codigo_barras");
                 int nomIdx = c.getColumnIndexOrThrow("nombre");
                 int descIdx = c.getColumnIndexOrThrow("descripcion");
+                int umIdx = c.getColumnIndex("unidad_medida");
+                int stIniIdx = c.getColumnIndex("stock_inicial");
                 int stockActIdx = c.getColumnIndexOrThrow("stock_actual");
                 int stockMinIdx = c.getColumnIndexOrThrow("stock_minimo");
                 int catIdIdx = c.getColumnIndexOrThrow("id_categoria");
@@ -127,8 +168,11 @@ public class ProductosActivity extends AppCompatActivity {
                     Producto p = new Producto();
                     p.setIdProducto(c.getInt(idIdx));
                     p.setSkuCodigo(c.getString(skuIdx));
+                    p.setCodigoBarras(cbIdx != -1 && c.getString(cbIdx) != null ? c.getString(cbIdx) : "");
                     p.setNombre(c.getString(nomIdx));
                     p.setDescripcion(c.getString(descIdx));
+                    p.setUnidadMedida(umIdx != -1 && c.getString(umIdx) != null ? c.getString(umIdx) : "Unidad");
+                    p.setStockInicial(stIniIdx != -1 ? c.getInt(stIniIdx) : 0);
                     p.setStockActual(c.getInt(stockActIdx));
                     p.setStockMinimo(c.getInt(stockMinIdx));
                     p.setIdCategoria(c.getInt(catIdIdx));
@@ -167,15 +211,30 @@ public class ProductosActivity extends AppCompatActivity {
                 TextView tvSku = convertView.findViewById(R.id.tvItemSku);
                 TextView tvCategoria = convertView.findViewById(R.id.tvItemCategoria);
                 TextView tvNombre = convertView.findViewById(R.id.tvItemNombre);
+                TextView tvCodigoBarras = convertView.findViewById(R.id.tvItemCodigoBarras);
                 TextView tvStockActual = convertView.findViewById(R.id.tvItemStockActual);
+                TextView tvUnidadMedida = convertView.findViewById(R.id.tvItemUnidadMedida);
                 TextView tvStockMinimo = convertView.findViewById(R.id.tvItemStockMinimo);
                 TextView tvBajoStockAlert = convertView.findViewById(R.id.tvItemBajoStockAlert);
 
                 tvSku.setText(producto.getSkuCodigo());
                 tvCategoria.setText(producto.getNombreCategoria());
                 tvNombre.setText(producto.getNombre());
-                tvStockActual.setText("Stock: " + producto.getStockActual() + " u.");
-                tvStockMinimo.setText("Mínimo: " + producto.getStockMinimo() + " u.");
+
+                if (tvCodigoBarras != null) {
+                    if (producto.getCodigoBarras() != null && !producto.getCodigoBarras().isEmpty()) {
+                        tvCodigoBarras.setText("CB: " + producto.getCodigoBarras());
+                        tvCodigoBarras.setVisibility(View.VISIBLE);
+                    } else {
+                        tvCodigoBarras.setVisibility(View.GONE);
+                    }
+                }
+
+                tvStockActual.setText("Stock: " + producto.getStockActual());
+                if (tvUnidadMedida != null) {
+                    tvUnidadMedida.setText("(" + producto.getUnidadMedida() + ")");
+                }
+                tvStockMinimo.setText("Mínimo: " + producto.getStockMinimo() + " " + producto.getUnidadMedida());
 
                 // Alerta de Bajo Stock
                 if (producto.isStockBajo()) {

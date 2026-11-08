@@ -46,21 +46,37 @@
         android:orientation="vertical"
         android:padding="16dp">
 
-        <!-- Campo de Búsqueda Dinámica -->
-        <com.google.android.material.textfield.TextInputLayout
+        <!-- Campo de Búsqueda Dinámica con Escáner -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="12dp"
-            android:hint="Buscar por SKU o Nombre..."
-            style="@style/Widget.Material3.TextInputLayout.OutlinedBox">
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/etBuscarProducto"
-                android:layout_width="match_parent"
+            <com.google.android.material.textfield.TextInputLayout
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:inputType="text"
-                android:singleLine="true" />
-        </com.google.android.material.textfield.TextInputLayout>
+                android:layout_weight="1"
+                android:layout_marginEnd="8dp"
+                android:hint="Buscar por SKU, Nombre o Código de Barras..."
+                style="@style/Widget.Material3.TextInputLayout.OutlinedBox">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etBuscarProducto"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="text"
+                    android:singleLine="true" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnEscanearBuscar"
+                style="@style/Widget.Material3.Button.TonalButton"
+                android:layout_width="wrap_content"
+                android:layout_height="56dp"
+                android:text="Escanear" />
+        </LinearLayout>
 
         <!-- Lista de Productos -->
         <ListView
