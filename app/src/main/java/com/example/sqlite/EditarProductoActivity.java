@@ -2,13 +2,19 @@ package com.example.sqlite;
 
 import android.content.ContentValues;
 import android.content.Intent;
+import android.content.res.ColorStateList;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteStatement;
+import android.graphics.Color;
 import android.os.Bundle;
+import android.text.Editable;
 import android.text.TextUtils;
+import android.text.TextWatcher;
 import android.view.View;
+import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
+import android.widget.LinearLayout;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -25,16 +31,19 @@ import java.util.ArrayList;
 
 public class EditarProductoActivity extends AppCompatActivity {
 
-    private TextView tvTituloHeader;
+    private TextView tvTituloHeader, tvEstadoProductoLabel;
+    private LinearLayout layoutEstadoProducto;
     private TextInputEditText etSku, etCodigoBarras, etNombre, etDescripcion, etUnidadMedida, etStockInicial, etStockActual, etStockMinimo;
     private Spinner spnCategoria;
-    private MaterialButton btnEscanearCodigo, btnGuardar, btnEliminar, btnVolver;
+    private MaterialButton btnGenerarSku, btnEscanearCodigo, btnToggleEstadoDetalle, btnGuardar, btnEliminar, btnVolver;
 
     private DBHelper dbHelper;
     private ArrayList<Categoria> listaCategorias;
     private ArrayAdapter<Categoria> adapterCategorias;
 
     private int idProducto = -1; // -1 indica creación de nuevo producto
+    private int activo = 1;      // 1 = activo, 0 = deshabilitado
+    private boolean ignorarAutoSkuWatcher = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -44,7 +53,12 @@ public class EditarProductoActivity extends AppCompatActivity {
         dbHelper = new DBHelper(this);
 
         tvTituloHeader = findViewById(R.id.tvTituloHeader);
+        layoutEstadoProducto = findViewById(R.id.layoutEstadoProducto);
+        tvEstadoProductoLabel = findViewById(R.id.tvEstadoProductoLabel);
+        btnToggleEstadoDetalle = findViewById(R.id.btnToggleEstadoDetalle);
+
         etSku = findViewById(R.id.etSku);
+        btnGenerarSku = findViewById(R.id.btnGenerarSku);
         etCodigoBarras = findViewById(R.id.etCodigoBarras);
         etNombre = findViewById(R.id.etNombre);
         etDescripcion = findViewById(R.id.etDescripcion);
@@ -73,6 +87,7 @@ public class EditarProductoActivity extends AppCompatActivity {
 
             Producto p = dbHelper.obtenerProductoPorId(idProducto);
             if (p != null) {
+                activo = p.getActivo();
                 etSku.setText(p.getSkuCodigo());
                 etCodigoBarras.setText(p.getCodigoBarras());
                 etNombre.setText(p.getNombre());
@@ -84,12 +99,12 @@ public class EditarProductoActivity extends AppCompatActivity {
                 etStockMinimo.setText(String.valueOf(p.getStockMinimo()));
                 seleccionarCategoriaEnSpinner(p.getIdCategoria());
             } else {
-                // Fallback a extras
                 cargarDesdeExtras();
             }
         } else {
             tvTituloHeader.setText("Nuevo Producto");
             btnEliminar.setVisibility(View.GONE);
+            activo = 1;
             if (getIntent() != null && getIntent().hasExtra("scanned_barcode")) {
                 String barcode = getIntent().getStringExtra("scanned_barcode");
                 if (barcode != null) {
@@ -98,24 +113,142 @@ public class EditarProductoActivity extends AppCompatActivity {
             }
         }
 
+        actualizarUiEstadoProducto();
+
+        // Toggle rápido de habilitar / deshabilitar producto
+        btnToggleEstadoDetalle.setOnClickListener(v -> toggleEstadoProducto());
+
+        // Botón manual para autogenerar SKU y Código de Barras
+        btnGenerarSku.setOnClickListener(v -> {
+            generarSkuYCbAutomatico(true);
+            Toast.makeText(this, "SKU y Código de Barras generados automáticamente", Toast.LENGTH_SHORT).show();
+        });
+
+        // Generación reactiva al escribir el nombre (solo en creación)
+        etNombre.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                if (idProducto == -1 && !ignorarAutoSkuWatcher) {
+                    generarSkuYCbAutomatico(false);
+                }
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {}
+        });
+
+        // Generación reactiva al cambiar la categoría en el Spinner (solo en creación)
+        spnCategoria.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                if (idProducto == -1 && !ignorarAutoSkuWatcher) {
+                    generarSkuYCbAutomatico(false);
+                }
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {}
+        });
+
         btnEscanearCodigo.setOnClickListener(v -> escanearCodigoBarras());
         btnGuardar.setOnClickListener(v -> guardarOActualizar());
         btnEliminar.setOnClickListener(v -> eliminarBajaLogica());
         btnVolver.setOnClickListener(v -> finish());
     }
 
+    private void actualizarUiEstadoProducto() {
+        if (idProducto == -1) {
+            layoutEstadoProducto.setVisibility(View.GONE);
+            return;
+        }
+
+        layoutEstadoProducto.setVisibility(View.VISIBLE);
+        if (activo == 1) {
+            tvEstadoProductoLabel.setText("Estado: ACTIVO (En Stock)");
+            tvEstadoProductoLabel.setTextColor(Color.parseColor("#1565C0"));
+            btnToggleEstadoDetalle.setText("Deshabilitar (Sin Stock)");
+            btnToggleEstadoDetalle.setBackgroundTintList(ColorStateList.valueOf(Color.parseColor("#FFEBEE")));
+            btnToggleEstadoDetalle.setTextColor(Color.parseColor("#C62828"));
+        } else {
+            tvEstadoProductoLabel.setText("Estado: DESHABILITADO (Sin Stock)");
+            tvEstadoProductoLabel.setTextColor(Color.parseColor("#C62828"));
+            btnToggleEstadoDetalle.setText("Habilitar");
+            btnToggleEstadoDetalle.setBackgroundTintList(ColorStateList.valueOf(Color.parseColor("#E8F5E9")));
+            btnToggleEstadoDetalle.setTextColor(Color.parseColor("#2E7D32"));
+        }
+    }
+
+    private void toggleEstadoProducto() {
+        if (idProducto == -1) return;
+
+        int nuevoEstado = (activo == 1) ? 0 : 1;
+        boolean exito = dbHelper.actualizarEstadoProducto(idProducto, nuevoEstado);
+        if (exito) {
+            activo = nuevoEstado;
+            actualizarUiEstadoProducto();
+            String msg = (nuevoEstado == 0)
+                    ? "Producto deshabilitado (aparecerá como sin stock)"
+                    : "Producto habilitado correctamente";
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
+        } else {
+            Toast.makeText(this, "Error al cambiar el estado del producto", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /**
+     * Genera automáticamente el SKU relacionado al nombre y la categoría asignada,
+     * garantizando que no se repita.
+     * También genera automáticamente el código de barras relacionado al SKU.
+     */
+    private void generarSkuYCbAutomatico(boolean forzar) {
+        if (idProducto != -1 && !forzar) {
+            return;
+        }
+
+        String nombre = etNombre.getText() != null ? etNombre.getText().toString().trim() : "";
+        if (nombre.isEmpty() && !forzar) {
+            return;
+        }
+
+        String nombreCat = "";
+        if (spnCategoria.getSelectedItem() != null) {
+            Categoria cat = (Categoria) spnCategoria.getSelectedItem();
+            nombreCat = cat.getNombreCategoria();
+        }
+
+        SQLiteDatabase db = dbHelper.getReadableDatabase();
+        String skuGenerado = InventarioUtils.generarSkuUnico(db, nombre, nombreCat, idProducto);
+
+        ignorarAutoSkuWatcher = true;
+        etSku.setText(skuGenerado);
+
+        String cbGenerado = InventarioUtils.generarCodigoBarrasDesdeSku(db, skuGenerado, idProducto);
+        etCodigoBarras.setText(cbGenerado);
+        ignorarAutoSkuWatcher = false;
+    }
+
     private void cargarDesdeExtras() {
         if (getIntent() == null) return;
         String sku = getIntent().getStringExtra("sku_codigo");
+        String cb = getIntent().getStringExtra("codigo_barras");
         String nombre = getIntent().getStringExtra("nombre");
         String desc = getIntent().getStringExtra("descripcion");
+        String um = getIntent().getStringExtra("unidad_medida");
+        int stIni = getIntent().getIntExtra("stock_inicial", 0);
         int stockAct = getIntent().getIntExtra("stock_actual", 0);
         int stockMin = getIntent().getIntExtra("stock_minimo", 0);
         int idCat = getIntent().getIntExtra("id_categoria", -1);
+        activo = getIntent().getIntExtra("activo", 1);
 
         etSku.setText(sku);
+        if (cb != null) etCodigoBarras.setText(cb);
         etNombre.setText(nombre);
         etDescripcion.setText(desc);
+        etUnidadMedida.setText(um != null && !um.isEmpty() ? um : "Unidad");
+        etStockInicial.setText(String.valueOf(stIni));
         etStockActual.setText(String.valueOf(stockAct));
         etStockMinimo.setText(String.valueOf(stockMin));
         seleccionarCategoriaEnSpinner(idCat);
@@ -180,23 +313,35 @@ public class EditarProductoActivity extends AppCompatActivity {
     }
 
     private void guardarOActualizar() {
+        String nombre = etNombre.getText() != null ? etNombre.getText().toString().trim() : "";
         String sku = etSku.getText() != null ? etSku.getText().toString().trim() : "";
         String codigoBarras = etCodigoBarras.getText() != null ? etCodigoBarras.getText().toString().trim() : "";
-        String nombre = etNombre.getText() != null ? etNombre.getText().toString().trim() : "";
         String desc = etDescripcion.getText() != null ? etDescripcion.getText().toString().trim() : "";
         String unidadMedida = etUnidadMedida.getText() != null ? etUnidadMedida.getText().toString().trim() : "Unidad";
         String stockIniStr = etStockInicial.getText() != null ? etStockInicial.getText().toString().trim() : "";
         String stockActStr = etStockActual.getText() != null ? etStockActual.getText().toString().trim() : "";
         String stockMinStr = etStockMinimo.getText() != null ? etStockMinimo.getText().toString().trim() : "";
 
-        if (TextUtils.isEmpty(sku)) {
-            etSku.setError("Ingrese el código SKU");
-            return;
-        }
-
         if (TextUtils.isEmpty(nombre)) {
             etNombre.setError("Ingrese el nombre del producto");
             return;
+        }
+
+        // Si el SKU está vacío, se autogenera de inmediato
+        if (TextUtils.isEmpty(sku)) {
+            generarSkuYCbAutomatico(true);
+            sku = etSku.getText() != null ? etSku.getText().toString().trim() : "";
+            if (TextUtils.isEmpty(sku)) {
+                etSku.setError("Ingrese o genere el código SKU");
+                return;
+            }
+        }
+
+        // Si el código de barras está vacío, se autogenera desde el SKU
+        if (TextUtils.isEmpty(codigoBarras)) {
+            SQLiteDatabase rdb = dbHelper.getReadableDatabase();
+            codigoBarras = InventarioUtils.generarCodigoBarrasDesdeSku(rdb, sku, idProducto);
+            etCodigoBarras.setText(codigoBarras);
         }
 
         if (idProducto == -1 && TextUtils.isEmpty(stockIniStr)) {
@@ -280,7 +425,7 @@ public class EditarProductoActivity extends AppCompatActivity {
 
                 long newId = db.insert("producto", null, cv);
                 if (newId != -1) {
-                    Toast.makeText(this, "Producto registrado correctamente", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "Producto registrado correctamente (SKU: " + sku + ")", Toast.LENGTH_SHORT).show();
                     finish();
                 } else {
                     Toast.makeText(this, "Error al registrar producto", Toast.LENGTH_SHORT).show();
@@ -296,6 +441,7 @@ public class EditarProductoActivity extends AppCompatActivity {
                 cv.put("stock_actual", stockActual);
                 cv.put("stock_minimo", stockMinimo);
                 cv.put("id_categoria", idCategoria);
+                cv.put("activo", activo);
 
                 int filasAfectadas = db.update("producto", cv, "id_producto = ?", new String[]{String.valueOf(idProducto)});
                 if (filasAfectadas > 0) {
@@ -322,17 +468,17 @@ public class EditarProductoActivity extends AppCompatActivity {
                 stmt.bindLong(1, idProducto);
                 int filas = stmt.executeUpdateDelete();
                 if (filas > 0) {
-                    Toast.makeText(this, "Producto dado de baja correctamente", Toast.LENGTH_SHORT).show();
+                    activo = 0;
+                    Toast.makeText(this, "Producto deshabilitado (dado de baja)", Toast.LENGTH_SHORT).show();
                     finish();
                 } else {
                     Toast.makeText(this, "No se encontró el producto", Toast.LENGTH_SHORT).show();
                 }
             }
         } catch (Exception e) {
-            Toast.makeText(this, "Error al eliminar: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Error al dar de baja: " + e.getMessage(), Toast.LENGTH_LONG).show();
         } finally {
             if (db != null && db.isOpen()) db.close();
         }
     }
 }
-

@@ -419,6 +419,19 @@ public class DBHelper extends SQLiteOpenHelper {
         return lista;
     }
 
+    public boolean actualizarEstadoProducto(int idProducto, int activo) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        ContentValues cv = new ContentValues();
+        cv.put("activo", activo);
+        try {
+            int rows = db.update("producto", cv, "id_producto = ?", new String[]{String.valueOf(idProducto)});
+            return rows > 0;
+        } catch (Exception e) {
+            Log.e("DBHelper", "Error al actualizar estado producto: " + e.getMessage());
+            return false;
+        }
+    }
+
     private Producto mapearProducto(Cursor c) {
         Producto p = new Producto();
         p.setIdProducto(c.getInt(c.getColumnIndexOrThrow("id_producto")));
