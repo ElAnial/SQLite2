@@ -77,6 +77,10 @@ public class MainActivity extends AppCompatActivity {
         cardProductos.setOnClickListener(v -> startActivity(new Intent(MainActivity.this, ProductosActivity.class)));
         cardCategorias.setOnClickListener(v -> startActivity(new Intent(MainActivity.this, CategoriasActivity.class)));
         findViewById(R.id.cardProveedores).setOnClickListener(v -> startActivity(new Intent(MainActivity.this, ProveedoresActivity.class)));
+        View cardRegistros = findViewById(R.id.cardRegistros);
+        if (cardRegistros != null) {
+            cardRegistros.setOnClickListener(v -> startActivity(new Intent(MainActivity.this, RegistrosActivity.class)));
+        }
     }
 
     @Override

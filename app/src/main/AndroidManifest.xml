@@ -62,6 +62,12 @@
             android:name=".ProveedoresActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
+
+        <!-- Historial de Auditoría -->
+        <activity
+            android:name=".RegistrosActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
     </application>
 
 </manifest>

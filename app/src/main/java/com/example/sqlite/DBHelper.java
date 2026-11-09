@@ -597,5 +597,77 @@ public class DBHelper extends SQLiteOpenHelper {
         }
         return lista;
     }
+
+    // --- MÉTODOS PARA HISTORIAL DE AUDITORÍA ---
+
+    /**
+     * Recupera los eventos del sistema para el historial de auditoría.
+     * Incluye: Movimientos (ENTRADA, SALIDA), Productos (Creación / Estado), Categorías y Proveedores.
+     * Ordenados de forma descendente por fecha (más recientes primero).
+     */
+    public List<RegistroAudit> obtenerHistorialCompleto() {
+        List<RegistroAudit> lista = new ArrayList<>();
+        SQLiteDatabase db = this.getReadableDatabase();
+
+        // 1. Movimientos de inventario (Entradas y Salidas con producto, cantidad, fecha y usuario)
+        String sqlMovimientos = "SELECT m.fecha_hora AS fecha, " +
+                "m.tipo AS tipo_accion, " +
+                "'Movimiento ' || m.tipo || ': ' || m.cantidad || ' unidad(es) de ' || COALESCE(p.nombre, 'Producto ID ' || m.id_producto) AS detalle, " +
+                "COALESCE(u.nombre_completo, u.username, 'Sistema') AS usuario " +
+                "FROM movimiento m " +
+                "LEFT JOIN producto p ON m.id_producto = p.id_producto " +
+                "LEFT JOIN usuario u ON m.id_usuario = u.id_usuario";
+
+        // 2. Estado de productos (Creación o cambio de estado a deshabilitado/activo)
+        String sqlProductos = "SELECT '2000-01-01 00:00:00' AS fecha, " +
+                "CASE WHEN p.activo = 1 THEN 'PRODUCTO' ELSE 'DESHABILITADO' END AS tipo_accion, " +
+                "'Producto: ' || p.nombre || ' (SKU: ' || p.sku_codigo || ') - Estado: ' || (CASE WHEN p.activo = 1 THEN 'Activo' ELSE 'Deshabilitado' END) AS detalle, " +
+                "'Sistema' AS usuario " +
+                "FROM producto p";
+
+        // 3. Registros de Categorías añadidas
+        String sqlCategorias = "SELECT '2000-01-01 00:00:00' AS fecha, " +
+                "'CATEGORÍA' AS tipo_accion, " +
+                "'Categoría registrada: ' || c.nombre_categoria || (CASE WHEN c.descripcion IS NOT NULL AND c.descripcion != '' THEN ' (' || c.descripcion || ')' ELSE '' END) AS detalle, " +
+                "'Sistema' AS usuario " +
+                "FROM categoria c";
+
+        // 4. Registros de Proveedores añadidos
+        String sqlProveedores = "SELECT '2000-01-01 00:00:00' AS fecha, " +
+                "'PROVEEDOR' AS tipo_accion, " +
+                "'Proveedor registrado: ' || pr.razon_social || ' (RUT: ' || pr.rut_empresa || ')' AS detalle, " +
+                "'Sistema' AS usuario " +
+                "FROM proveedor pr";
+
+        // Unión de eventos de auditoría y ordenamiento descendente por fecha
+        String sqlUnion = sqlMovimientos + " UNION ALL " + sqlProductos + " UNION ALL " + sqlCategorias + " UNION ALL " + sqlProveedores + " ORDER BY fecha DESC";
+
+        try (Cursor cursor = db.rawQuery(sqlUnion, null)) {
+            if (cursor.moveToFirst()) {
+                int fechaIdx = cursor.getColumnIndexOrThrow("fecha");
+                int tipoIdx = cursor.getColumnIndexOrThrow("tipo_accion");
+                int detalleIdx = cursor.getColumnIndexOrThrow("detalle");
+                int usuarioIdx = cursor.getColumnIndexOrThrow("usuario");
+
+                do {
+                    String fecha = cursor.getString(fechaIdx);
+                    String tipo = cursor.getString(tipoIdx);
+                    String detalle = cursor.getString(detalleIdx);
+                    String usuario = cursor.getString(usuarioIdx);
+
+                    if ("2000-01-01 00:00:00".equals(fecha)) {
+                        fecha = "Registro Inicial";
+                    }
+
+                    RegistroAudit registro = new RegistroAudit(tipo, detalle, usuario, fecha);
+                    lista.add(registro);
+                } while (cursor.moveToNext());
+            }
+        } catch (Exception e) {
+            Log.e("DBHelper", "Error al obtener historial completo de auditoría: " + e.getMessage());
+        }
+
+        return lista;
+    }
 }
 
