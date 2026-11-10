@@ -99,12 +99,6 @@ public class MainActivity extends AppCompatActivity {
         // Informe de Stock
         findViewById(R.id.cardInforme).setOnClickListener(v -> startActivity(new Intent(MainActivity.this, InformeStockActivity.class)));
 
-        // Mapa y Ruta GPS a Empresa
-        View cardMapa = findViewById(R.id.cardMapa);
-        if (cardMapa != null) {
-            cardMapa.setOnClickListener(v -> startActivity(new Intent(MainActivity.this, MapaRutaActivity.class)));
-        }
-
         // Rol CONSULTA (3): Oculta solo operaciones de modificación (Entradas a Bodega y Gestión de Usuarios)
         int rolActual = session.getRoleId();
         if (rolActual != 1 && rolActual != 2) {
