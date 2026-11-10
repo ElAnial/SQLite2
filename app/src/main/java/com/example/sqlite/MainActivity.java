@@ -36,6 +36,14 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
+        // Si es rol CONSULTA (id_rol == 3), redirigir directamente a la interfaz única de tienda
+        if (session.getRoleId() == 3) {
+            Intent intent = new Intent(MainActivity.this, TiendaProductosActivity.class);
+            startActivity(intent);
+            finish();
+            return;
+        }
+
         setContentView(R.layout.activity_main);
 
         dbHelper = new DBHelper(this);

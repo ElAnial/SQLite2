@@ -45,6 +45,12 @@
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
 
+        <!-- Interfaz Única de Tienda para Rol Consulta -->
+        <activity
+            android:name=".TiendaProductosActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
         <!-- Detalle, Edición y Registro de Productos -->
         <activity
             android:name=".EditarProductoActivity"

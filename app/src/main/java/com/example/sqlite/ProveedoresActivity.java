@@ -17,10 +17,11 @@ import com.google.android.material.button.MaterialButton;
 import com.google.android.material.textfield.TextInputEditText;
 
 import java.util.ArrayList;
+import java.util.Locale;
 
 public class ProveedoresActivity extends AppCompatActivity {
 
-    private TextInputEditText etRutProveedor, etRazonSocial, etContacto;
+    private TextInputEditText etRunProveedor, etDvProveedor, etRazonSocial, etContacto;
     private MaterialButton btnGuardarProveedor;
     private ListView lstProveedores;
 
@@ -37,11 +38,34 @@ public class ProveedoresActivity extends AppCompatActivity {
 
         dbHelper = new DBHelper(this);
 
-        etRutProveedor = findViewById(R.id.etRutProveedor);
+        etRunProveedor = findViewById(R.id.etRunProveedor);
+        etDvProveedor = findViewById(R.id.etDvProveedor);
         etRazonSocial = findViewById(R.id.etRazonSocial);
         etContacto = findViewById(R.id.etContacto);
         btnGuardarProveedor = findViewById(R.id.btnGuardarProveedor);
         lstProveedores = findViewById(R.id.lstProveedores);
+
+        // Autocalcular Dígito Verificador (Módulo 11) al escribir el RUN
+        if (etRunProveedor != null && etDvProveedor != null) {
+            etRunProveedor.addTextChangedListener(new android.text.TextWatcher() {
+                @Override
+                public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+                @Override
+                public void onTextChanged(CharSequence s, int start, int before, int count) {
+                    String cuerpo = s != null ? s.toString().trim() : "";
+                    if (!cuerpo.isEmpty()) {
+                        String dvCalculado = InventarioUtils.calcularDigitoVerificador(cuerpo);
+                        etDvProveedor.setText(dvCalculado);
+                    } else {
+                        etDvProveedor.setText("");
+                    }
+                }
+
+                @Override
+                public void afterTextChanged(android.text.Editable s) {}
+            });
+        }
 
         listaProveedoresString = new ArrayList<>();
         adapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, listaProveedoresString);
@@ -80,15 +104,33 @@ public class ProveedoresActivity extends AppCompatActivity {
             return;
         }
 
-        String rut = etRutProveedor.getText() != null ? etRutProveedor.getText().toString().trim() : "";
+        String cuerpo = etRunProveedor.getText() != null ? etRunProveedor.getText().toString().trim() : "";
+        String dv = etDvProveedor.getText() != null ? etDvProveedor.getText().toString().trim().toUpperCase(Locale.ROOT) : "";
         String razonSocial = etRazonSocial.getText() != null ? etRazonSocial.getText().toString().trim() : "";
         String contacto = etContacto.getText() != null ? etContacto.getText().toString().trim() : "";
 
-        // Los tres datos son obligatorios
-        if (TextUtils.isEmpty(rut)) {
-            etRutProveedor.setError("Ingrese el RUT de la empresa");
+        if (TextUtils.isEmpty(cuerpo)) {
+            etRunProveedor.setError("Ingrese el RUN");
             return;
         }
+
+        if (cuerpo.length() > 8) {
+            etRunProveedor.setError("El RUN no puede tener más de 8 dígitos");
+            return;
+        }
+
+        if (TextUtils.isEmpty(dv)) {
+            etDvProveedor.setError("Ingrese el dígito verificador");
+            return;
+        }
+
+        String rutCompleto = cuerpo + "-" + dv;
+        if (!InventarioUtils.validarFormatoRut(rutCompleto)) {
+            etRunProveedor.setError("RUT inválido (verifique RUN y DV)");
+            return;
+        }
+
+        String rut = InventarioUtils.formatearRut(rutCompleto);
 
         if (TextUtils.isEmpty(razonSocial)) {
             etRazonSocial.setError("Ingrese la razón social");
@@ -106,7 +148,7 @@ public class ProveedoresActivity extends AppCompatActivity {
             // El RUT de la empresa debe ser único
             try (Cursor c = db.rawQuery("SELECT COUNT(*) FROM proveedor WHERE rut_empresa = ?", new String[]{rut})) {
                 if (c.moveToFirst() && c.getInt(0) > 0) {
-                    etRutProveedor.setError("Ya existe un proveedor con este RUT");
+                    etRunProveedor.setError("Ya existe un proveedor con este RUT");
                     return;
                 }
             }
@@ -119,10 +161,11 @@ public class ProveedoresActivity extends AppCompatActivity {
             long id = db.insert("proveedor", null, values);
             if (id != -1) {
                 Toast.makeText(this, "Proveedor registrado correctamente", Toast.LENGTH_SHORT).show();
-                etRutProveedor.setText("");
+                etRunProveedor.setText("");
+                etDvProveedor.setText("");
                 etRazonSocial.setText("");
                 etContacto.setText("");
-                etRutProveedor.clearFocus();
+                etRunProveedor.clearFocus();
                 cargarProveedores(); // Recargar lista
             } else {
                 Toast.makeText(this, "Error al registrar el proveedor", Toast.LENGTH_SHORT).show();
@@ -167,13 +210,55 @@ public class ProveedoresActivity extends AppCompatActivity {
             if (dbLectura != null && dbLectura.isOpen()) dbLectura.close();
         }
 
+        String cuerpoActual = "";
+        String dvActual = "";
+        if (rutActual.contains("-")) {
+            String[] parts = rutActual.split("-");
+            cuerpoActual = parts[0].replaceAll("\\D", "");
+            if (parts.length > 1) {
+                dvActual = parts[1].trim();
+            }
+        } else {
+            String limpio = rutActual.replaceAll("\\D", "");
+            if (limpio.length() > 1) {
+                cuerpoActual = limpio.substring(0, limpio.length() - 1);
+                dvActual = limpio.substring(limpio.length() - 1);
+            } else {
+                cuerpoActual = limpio;
+            }
+        }
+
         View vista = getLayoutInflater().inflate(R.layout.dialog_editar_proveedor, null);
-        TextInputEditText etRut = vista.findViewById(R.id.etEditRutProveedor);
+        TextInputEditText etRun = vista.findViewById(R.id.etEditRunProveedor);
+        TextInputEditText etDv = vista.findViewById(R.id.etEditDvProveedor);
         TextInputEditText etRazon = vista.findViewById(R.id.etEditRazonSocial);
         TextInputEditText etCont = vista.findViewById(R.id.etEditContacto);
-        etRut.setText(rutActual);
+
+        etRun.setText(cuerpoActual);
+        etDv.setText(dvActual);
         etRazon.setText(razonActual);
         etCont.setText(contactoActual);
+
+        if (etRun != null && etDv != null) {
+            etRun.addTextChangedListener(new android.text.TextWatcher() {
+                @Override
+                public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+                @Override
+                public void onTextChanged(CharSequence s, int start, int before, int count) {
+                    String cuerpo = s != null ? s.toString().trim() : "";
+                    if (!cuerpo.isEmpty()) {
+                        String dvCalculado = InventarioUtils.calcularDigitoVerificador(cuerpo);
+                        etDv.setText(dvCalculado);
+                    } else {
+                        etDv.setText("");
+                    }
+                }
+
+                @Override
+                public void afterTextChanged(android.text.Editable s) {}
+            });
+        }
 
         AlertDialog dialogo = new AlertDialog.Builder(this)
                 .setTitle("Editar Proveedor")
@@ -185,14 +270,31 @@ public class ProveedoresActivity extends AppCompatActivity {
 
         // Se sobrescribe el click para no cerrar el diálogo si la validación falla
         dialogo.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-            String rut = etRut.getText() != null ? etRut.getText().toString().trim() : "";
+            String cuerpo = etRun.getText() != null ? etRun.getText().toString().trim() : "";
+            String dv = etDv.getText() != null ? etDv.getText().toString().trim().toUpperCase(Locale.ROOT) : "";
             String razon = etRazon.getText() != null ? etRazon.getText().toString().trim() : "";
             String contacto = etCont.getText() != null ? etCont.getText().toString().trim() : "";
 
-            if (TextUtils.isEmpty(rut)) {
-                etRut.setError("Ingrese el RUT de la empresa");
+            if (TextUtils.isEmpty(cuerpo)) {
+                etRun.setError("Ingrese el RUN");
                 return;
             }
+            if (cuerpo.length() > 8) {
+                etRun.setError("El RUN no puede tener más de 8 dígitos");
+                return;
+            }
+            if (TextUtils.isEmpty(dv)) {
+                etDv.setError("Ingrese el DV");
+                return;
+            }
+
+            String rutCompleto = cuerpo + "-" + dv;
+            if (!InventarioUtils.validarFormatoRut(rutCompleto)) {
+                etRun.setError("RUT inválido");
+                return;
+            }
+            String rut = InventarioUtils.formatearRut(rutCompleto);
+
             if (TextUtils.isEmpty(razon)) {
                 etRazon.setError("Ingrese la razón social");
                 return;
@@ -206,7 +308,7 @@ public class ProveedoresActivity extends AppCompatActivity {
             if (resultado == 1) {
                 dialogo.dismiss();
             } else if (resultado == -2) {
-                etRut.setError("Ya existe otro proveedor con este RUT");
+                etRun.setError("Ya existe otro proveedor con este RUT");
             }
         });
     }

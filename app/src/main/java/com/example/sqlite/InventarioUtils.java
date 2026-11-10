@@ -165,5 +165,92 @@ public class InventarioUtils {
         int residuo = suma % 10;
         return (residuo == 0) ? 0 : (10 - residuo);
     }
+
+    /**
+     * Valida si un RUT tiene formato válido (hasta 8 dígitos base, guión, y 1 dígito verificador 0-9 o K).
+     */
+    public static boolean validarFormatoRut(String rut) {
+        if (rut == null) return false;
+        String limpio = rut.trim().toUpperCase(Locale.ROOT);
+        String sinPuntos = limpio.replace(".", "");
+        if (!sinPuntos.contains("-")) return false;
+        String[] partes = sinPuntos.split("-");
+        if (partes.length != 2) return false;
+
+        String cuerpo = partes[0];
+        String dv = partes[1];
+
+        // Cuerpo: entre 1 y 8 dígitos numéricos
+        if (!cuerpo.matches("^\\d{1,8}$")) return false;
+        // DV: exactamente 1 caracter (0-9 o K)
+        if (!dv.matches("^[0-9K]$")) return false;
+
+        return true;
+    }
+
+    /**
+     * Formatea un RUT al estándar XX.XXX.XXX-X o X.XXX.XXX-X.
+     */
+    public static String formatearRut(String rut) {
+        if (rut == null) return "";
+        String limpio = rut.trim().toUpperCase(Locale.ROOT).replace(".", "").replace(" ", "");
+        if (!limpio.contains("-")) return limpio;
+        String[] partes = limpio.split("-");
+        if (partes.length != 2) return limpio;
+
+        String cuerpo = partes[0].replaceAll("\\D", "");
+        String dv = partes[1].replaceAll("[^0-9K]", "");
+        if (cuerpo.isEmpty() || dv.isEmpty()) return limpio;
+
+        if (cuerpo.length() > 8) {
+            cuerpo = cuerpo.substring(cuerpo.length() - 8);
+        }
+        if (dv.length() > 1) {
+            dv = dv.substring(0, 1);
+        }
+
+        StringBuilder sb = new StringBuilder();
+        int len = cuerpo.length();
+        for (int i = 0; i < len; i++) {
+            sb.append(cuerpo.charAt(i));
+            int resto = len - 1 - i;
+            if (resto > 0 && resto % 3 == 0) {
+                sb.append(".");
+            }
+        }
+        sb.append("-").append(dv);
+        return sb.toString();
+    }
+
+    /**
+     * Calcula el Dígito Verificador de un RUT chileno usando el algoritmo del Módulo 11.
+     */
+    public static String calcularDigitoVerificador(String cuerpoStr) {
+        if (cuerpoStr == null || cuerpoStr.trim().isEmpty()) return "";
+        try {
+            int cuerpo = Integer.parseInt(cuerpoStr.trim().replaceAll("\\D", ""));
+            int suma = 0;
+            int multiplicador = 2;
+            while (cuerpo > 0) {
+                suma += (cuerpo % 10) * multiplicador;
+                cuerpo /= 10;
+                multiplicador++;
+                if (multiplicador > 7) {
+                    multiplicador = 2;
+                }
+            }
+            int resto = suma % 11;
+            int resultado = 11 - resto;
+            if (resultado == 11) {
+                return "0";
+            } else if (resultado == 10) {
+                return "K";
+            } else {
+                return String.valueOf(resultado);
+            }
+        } catch (NumberFormatException e) {
+            return "";
+        }
+    }
 }
 

@@ -88,8 +88,14 @@ public class LoginActivity extends AppCompatActivity {
     }
 
     private void irAHome() {
-        Intent intent = new Intent(LoginActivity.this, MainActivity.class);
-        startActivity(intent);
-        finish();
+        if (session.getRoleId() == 3) {
+            Intent intent = new Intent(LoginActivity.this, TiendaProductosActivity.class);
+            startActivity(intent);
+            finish();
+        } else {
+            Intent intent = new Intent(LoginActivity.this, MainActivity.class);
+            startActivity(intent);
+            finish();
+        }
     }
 }
