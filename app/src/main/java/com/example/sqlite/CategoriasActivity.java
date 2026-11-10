@@ -55,10 +55,19 @@ public class CategoriasActivity extends AppCompatActivity {
         };
         lstCategorias.setAdapter(adapter);
 
+        session = new SessionManager(this);
+
+        // Control de permisos por rol: Rol Consulta (id_rol == 3) no puede crear ni editar categorías
+        if (session.getRoleId() != 1 && session.getRoleId() != 2) {
+            View cardFormulario = findViewById(R.id.cardFormularioCategoria);
+            if (cardFormulario != null) {
+                cardFormulario.setVisibility(View.GONE);
+            }
+        }
+
         btnGuardarCategoria.setOnClickListener(v -> guardarCategoria());
 
         // Solo el Administrador (id_rol == 1) puede editar o dar de baja categorías
-        session = new SessionManager(this);
         if (session.getRoleId() == 1) {
             lstCategorias.setOnItemClickListener((parent, view, position, id) -> {
                 if (position >= 0 && position < listaCategoriasIds.size()) {
@@ -74,6 +83,11 @@ public class CategoriasActivity extends AppCompatActivity {
     }
 
     private void guardarCategoria() {
+        if (session.getRoleId() != 1 && session.getRoleId() != 2) {
+            Toast.makeText(this, "Acceso denegado: El rol consulta no puede crear categorías", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
         String nombre = etNombreCategoria.getText() != null ? etNombreCategoria.getText().toString().trim() : "";
         String descripcion = etDescripcionCategoria.getText() != null ? etDescripcionCategoria.getText().toString().trim() : "";
 

@@ -2,6 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Ubicación del dispositivo (Informe de Stock: ruta hacia la empresa) -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -47,6 +51,17 @@
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
 
+        <!-- Entradas de stock -->
+        <activity
+            android:name=".SalidasActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".EntradasActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
         <!-- Módulo de Categorías -->
         <activity
             android:name=".CategoriasActivity"
@@ -68,6 +83,29 @@
             android:name=".RegistrosActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
+
+        <!-- Informe de Stock -->
+        <activity
+            android:name=".InformeStockActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- Mapa y Ruta GPS a Empresa -->
+        <activity
+            android:name=".MapaRutaActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- FileProvider para Exportar Informes (CSV/TXT) -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>

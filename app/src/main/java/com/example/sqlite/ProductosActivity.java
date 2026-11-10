@@ -52,7 +52,7 @@ public class ProductosActivity extends AppCompatActivity {
         lstProductos = findViewById(R.id.lstProductos);
 
         // Control de permisos por rol: Usuario de consulta (id_rol == 3) no puede crear/editar productos
-        if (session.getRoleId() == 3) {
+        if ((session.getRoleId() != 1 && session.getRoleId() != 2)) {
             btnNuevoProducto.setVisibility(View.GONE);
         }
 
@@ -93,7 +93,7 @@ public class ProductosActivity extends AppCompatActivity {
 
         // Clic en fila para Editar (Solo si no es Usuario de Consulta)
         lstProductos.setOnItemClickListener((parent, view, position, id) -> {
-            if (session.getRoleId() == 3) {
+            if ((session.getRoleId() != 1 && session.getRoleId() != 2)) {
                 Toast.makeText(this, "Usuario de consulta: Solo lectura", Toast.LENGTH_SHORT).show();
                 return;
             }
@@ -265,7 +265,7 @@ public class ProductosActivity extends AppCompatActivity {
 
                 // Control del botón de acción rápida de deshabilitar/habilitar
                 if (btnToggleEstado != null) {
-                    if (session.getRoleId() == 3) {
+                    if ((session.getRoleId() != 1 && session.getRoleId() != 2)) {
                         btnToggleEstado.setVisibility(View.GONE);
                     } else {
                         btnToggleEstado.setVisibility(View.VISIBLE);

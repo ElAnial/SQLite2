@@ -49,7 +49,7 @@ public class EntradasActivity extends AppCompatActivity {
             return;
         }
 
-        if (session.getRoleId() == 3) {
+        if ((session.getRoleId() != 1 && session.getRoleId() != 2)) {
             Toast.makeText(this, "Acceso no permitido para usuario de consulta", Toast.LENGTH_LONG).show();
             finish();
             return;
@@ -181,8 +181,6 @@ public class EntradasActivity extends AppCompatActivity {
 
         } catch (Exception e) {
             Toast.makeText(this, "Error al cargar proveedores: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-        } finally {
-            if (db != null && db.isOpen()) db.close();
         }
     }
 

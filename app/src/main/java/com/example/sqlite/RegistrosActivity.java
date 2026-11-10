@@ -34,19 +34,9 @@ public class RegistrosActivity extends AppCompatActivity {
         // 1. Control de Acceso por Roles (RBAC)
         sessionManager = new SessionManager(this);
 
-        // Verificar si la sesión está activa
+        // Verificar si la sesión está activa (Todos los roles autenticados pueden ver el historial)
         if (!sessionManager.isLoggedIn()) {
             Toast.makeText(this, "Debe iniciar sesión para acceder", Toast.LENGTH_SHORT).show();
-            finish();
-            return;
-        }
-
-        String rol = sessionManager.getRoleName();
-        int roleId = sessionManager.getRoleId();
-
-        // Si el rol es "CONSULTA" (id_rol == 3), se deniega el acceso y se cierra la vista
-        if ((rol != null && rol.equalsIgnoreCase("CONSULTA")) || roleId == 3) {
-            Toast.makeText(this, "Acceso denegado: Solo Administradores y Bodegueros pueden ver este historial", Toast.LENGTH_LONG).show();
             finish();
             return;
         }

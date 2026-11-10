@@ -81,6 +81,28 @@ public class MainActivity extends AppCompatActivity {
         if (cardRegistros != null) {
             cardRegistros.setOnClickListener(v -> startActivity(new Intent(MainActivity.this, RegistrosActivity.class)));
         }
+
+        // Entradas a bodega (solo Administrador y Bodeguero)
+        View cardEntradas = findViewById(R.id.cardEntradas);
+        if (cardEntradas != null) {
+            cardEntradas.setOnClickListener(v -> startActivity(new Intent(MainActivity.this, EntradasActivity.class)));
+        }
+
+        // Informe de Stock
+        findViewById(R.id.cardInforme).setOnClickListener(v -> startActivity(new Intent(MainActivity.this, InformeStockActivity.class)));
+
+        // Mapa y Ruta GPS a Empresa
+        View cardMapa = findViewById(R.id.cardMapa);
+        if (cardMapa != null) {
+            cardMapa.setOnClickListener(v -> startActivity(new Intent(MainActivity.this, MapaRutaActivity.class)));
+        }
+
+        // Rol CONSULTA (3): Oculta solo operaciones de modificación (Entradas a Bodega y Gestión de Usuarios)
+        int rolActual = session.getRoleId();
+        if (rolActual != 1 && rolActual != 2) {
+            if (cardEntradas != null) cardEntradas.setVisibility(View.GONE);
+            cardUsuarios.setVisibility(View.GONE);
+        }
     }
 
     @Override

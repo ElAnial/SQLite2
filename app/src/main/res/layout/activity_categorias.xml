@@ -45,6 +45,7 @@
 
         <!-- Formulario Registro de Categoría (CU-09) -->
         <com.google.android.material.card.MaterialCardView
+            android:id="@+id/cardFormularioCategoria"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="16dp"

@@ -47,10 +47,19 @@ public class ProveedoresActivity extends AppCompatActivity {
         adapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, listaProveedoresString);
         lstProveedores.setAdapter(adapter);
 
+        session = new SessionManager(this);
+
+        // Control de permisos por rol: Rol Consulta (id_rol == 3) no puede crear ni editar proveedores
+        if (session.getRoleId() != 1 && session.getRoleId() != 2) {
+            View cardFormulario = findViewById(R.id.cardFormularioProveedor);
+            if (cardFormulario != null) {
+                cardFormulario.setVisibility(View.GONE);
+            }
+        }
+
         btnGuardarProveedor.setOnClickListener(v -> guardarProveedor());
 
         // Solo el Administrador (id_rol == 1) puede editar o eliminar proveedores
-        session = new SessionManager(this);
         if (session.getRoleId() == 1) {
             lstProveedores.setOnItemClickListener((parent, view, position, id) -> {
                 if (position >= 0 && position < listaProveedoresIds.size()) {
@@ -66,6 +75,11 @@ public class ProveedoresActivity extends AppCompatActivity {
     }
 
     private void guardarProveedor() {
+        if (session.getRoleId() != 1 && session.getRoleId() != 2) {
+            Toast.makeText(this, "Acceso denegado: El rol consulta no puede crear proveedores", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
         String rut = etRutProveedor.getText() != null ? etRutProveedor.getText().toString().trim() : "";
         String razonSocial = etRazonSocial.getText() != null ? etRazonSocial.getText().toString().trim() : "";
         String contacto = etContacto.getText() != null ? etContacto.getText().toString().trim() : "";
